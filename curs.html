@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Курсы валют Национального банка Молдовы</title>
+    <style>
+        body {
+          font-family: sans-serif;
+          padding: 20px;
+          max-width: 800px;
+          margin: auto;
+          line-height: 1.6;
+        }
+        h1 {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 1rem;
+        }
+        h1 img {
+          width: 202px;
+          height: 50px;
+        }
+        h2 {
+          margin-top: 40px;
+          margin-bottom: 12px;
+        }
+        pre {
+          background: #f4f4f4;
+          padding: 15px;
+          border-radius: 5px;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          font-family: monospace;
+        }
+        .up {
+          color: green;
+          font-weight: bold;
+        }
+        .down {
+          color: red;
+          font-weight: bold;
+        }
+        .same {
+          color: black;
+          font-weight: normal;
+        }
+        button {
+          margin-top: 10px;
+          padding: 8px 16px;
+          cursor: pointer;
+          font-size: 16px;
+        }
+        table {
+          margin: 15px auto 40px auto;
+          border-collapse: collapse;
+          width: auto;
+          min-width: 320px;
+        }
+        th, td {
+          border: 1px solid #ddd;
+          padding: 8px 12px;
+          text-align: center;
+        }
+        th {
+          background: #f0f0f0;
+        }
+        .diff {
+          font-weight: bold;
+        }
+        .diff.up {
+          color: green;
+        }
+        .diff.down {
+          color: red;
+        }
+        .diff.same {
+          color: black;
+          font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+<h1>
+    <img loading="lazy" width="202" height="50" src="https://bas-tv.md/wp-content/uploads/2023/05/bas-tv-culoarea-rosie.png"
+         alt="bas-tv logo"/>
+    Курсы валют Национального банка Молдовы
+</h1>
+<button onclick="fetchRates()">📥 Получить курсы</button>
+<div id="content-ru" style="margin-top: 20px;"></div>
+<div id="content-ro"></div>
+
+<script>
+    const flags = {
+      USD: 'https://flagcdn.com/us.svg',
+      EUR: 'https://flagcdn.com/eu.svg',
+      RUB: 'https://flagcdn.com/ru.svg',
+      RON: 'https://flagcdn.com/ro.svg',
+      UAH: 'https://flagcdn.com/ua.svg',
+    };
+    
+    function formatDateObjToString(d) {
+      return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`;
+    }
+    function formatISODate(d) {
+      return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
+    }
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    async function fetchWithRetries(url, attempts = 5, delayMs = 2000) {
+      for(let i=0; i<attempts; i++){
+        try {
+          const res = await fetch(url);
+          if(res.ok) return await res.text();
+        } catch {}
+        if(i < attempts - 1) await delay(delayMs);
+      }
+      throw new Error('Не удалось получить данные после нескольких попыток');
+    }
+    const codes = ['USD','EUR','RUB','RON','UAH'];
+    
+    function phraseRU(code, diff){
+      const absDiff = Math.abs(diff);
+      const roundedBani = Math.round(absDiff * 100);
+    
+      // Если изменений нет
+      if (diff === 0) {
+        const noChangePhrases = {
+          USD: 'Доллар США остался на прежнем уровне',
+          EUR: 'Евро остался на прежнем уровне',
+          RUB: 'Российский рубль остался на прежнем уровне',
+          RON: 'Румынский лей остался на прежнем уровне',
+          UAH: 'Украинская гривна осталась на прежнем уровне'
+        };
+        return noChangePhrases[code] || `${code} осталась на прежнем уровне`;
+      }
+    
+      function declOfNum(n) {
+        const lastTwo = n % 100;
+        if (lastTwo >= 11 && lastTwo <= 14) return 'банов';
+        const last = n % 10;
+        if (last === 1) return 'бан';
+        if (last >= 2 && last <= 4) return 'бана';
+        return 'банов';
+      }
+    
+      // Фиксированное начало
+      const startPhrases = {
+        USD: 'Доллар США',
+        EUR: 'Евро',
+        RUB: 'Российский рубль',
+        RON: 'Румынский лей',
+        UAH: 'Украинская гривна'
+      };
+    
+      const base = startPhrases[code] || code;
+    
+      const choose = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    
+    const endingsUp = {
+      slight: {
+        default: [
+          'слегка вырос',
+          'немного укрепился',
+          '- небольшое повышение курса',
+          'показал незначительный рост',
+          'чуть-чуть подорожал',
+          'продемонстрировал лёгкий подъём',
+          'отметился слабым ростом'
+        ],
+        UAH: [
+          'слегка выросла',
+          'немного укрепилась',
+          'показала небольшое повышение',
+          'отметилась незначительным ростом',
+          'чуть-чуть подорожала',
+          'продемонстрировала лёгкий подъём',
+          'показала слабый рост'
+        ]
+      },
+      moderate: (amount, code) => {
+        if (code === 'UAH') {
+          return [
+            `увеличилась на ${amount}`,
+            `поднялась на ${amount}`,
+            `показала рост на ${amount}`,
+            `укрепилась на ${amount}`,
+            `приросла на ${amount}`,
+            `обновила значение, прибавив ${amount}`
+          ];
+        }
+        return [
+          `увеличился на ${amount}`,
+          `поднялся на ${amount}`,
+          `показал рост на ${amount}`,
+          `укрепился на ${amount}`,
+          `прирос на ${amount}`,
+          `обновил значение, прибавив ${amount}`
+        ];
+      },
+      significant: (amount, code) => {
+        if (code === 'UAH') {
+          return [
+            `значительно укрепилась, увеличившись на ${amount}`,
+            `сильно выросла, прибавив ${amount}`,
+            `демонстрирует значительный рост — +${amount}`,
+            `продемонстрировала резкий подъём на ${amount}`,
+            `стремительно выросла на ${amount}`,
+            `- наблюдается уверенный скачок — +${amount}`
+          ];
+        }
+        return [
+          `значительно укрепился, увеличившись на ${amount}`,
+          `сильно вырос, прибавив ${amount}`,
+          `демонстрирует значительный рост — +${amount}`,
+          `продемонстрировал резкий подъём на ${amount}`,
+          `стремительно вырос на ${amount}`,
+          `- наблюдается уверенный скачок — +${amount}`
+        ];
+      }
+    };
+    
+      const endingsDown = {
+        slight: {
+      default: [
+        'слегка снизился',
+        'немного ослаб',
+        'небольшое понижение курса',
+        'показал слабое снижение',
+        'чуть-чуть подешевел',
+        'продемонстрировал лёгкое ослабление',
+        'отметился незначительным снижением'
+      ],
+      UAH: [
+        'слегка снизилась',
+        'немного ослабла',
+        'показала небольшое снижение',
+        'отметилась незначительным снижением',
+        'чуть-чуть подешевела',
+        'продемонстрировала лёгкое ослабление',
+        'показала слабое снижение'
+      ],
+      RUB: [
+        'показал небольшое понижение курса',
+        'слегка снизился',
+        'немного ослаб',
+        'продемонстрировал лёгкое падение',
+        'чуть-чуть подешевел',
+        'отметился незначительным снижением'
+      ]
+    },
+       moderate: (amount, code) => {
+      if (code === 'UAH') return [
+        `уменьшилась на ${amount}`,
+        `- падение курса на ${amount}`,
+        `показала снижение на ${amount}`,
+        `ослабла на ${amount}`,
+        `подешевела на ${amount}`,
+        `продемонстрировала снижение на ${amount}`
+      ];
+      return [
+        `уменьшился на ${amount}`,
+        `- падение курса на ${amount}`,
+        `показал снижение на ${amount}`,
+        `ослаб на ${amount}`,
+        `подешевел на ${amount}`,
+        `продемонстрировал снижение на ${amount}`
+      ];
+    },
+        significant: (amount, code) => {
+      if (code === 'UAH') return [
+        `значительно ослабла, уменьшившись на ${amount}`,
+        `сильно снизилась, потеряв ${amount}`,
+        `демонстрирует значительное снижение — -${amount}`,
+        `продемонстрировала резкое падение на ${amount}`,
+        `стремительно снизилась на ${amount}`,
+        `наблюдается выраженное ослабление — -${amount}`
+      ];
+      return [
+        `значительно ослаб, уменьшившись на ${amount}`,
+        `сильно снизился, потеряв ${amount}`,
+        `демонстрирует значительное снижение — -${amount}`,
+        `продемонстрировал резкое падение на ${amount}`,
+        `стремительно снизился на ${amount}`,
+        `наблюдается выраженное ослабление — -${amount}`
+      ];
+    }
+      };
+    
+      let endingPhrase = '';
+    
+    if (roundedBani < 1) {
+      if (diff > 0) {
+        if (code === 'UAH') endingPhrase = choose(endingsUp.slight.UAH);
+        else endingPhrase = choose(endingsUp.slight.default);
+      } else {
+        if (code === 'UAH') endingPhrase = choose(endingsDown.slight.UAH);
+        else if (code === 'RUB') endingPhrase = choose(endingsDown.slight.RUB);
+        else endingPhrase = choose(endingsDown.slight.default);
+      }
+      } else if (roundedBani < 95) {
+        const amount = `${roundedBani} ${declOfNum(roundedBani)}`;
+        if (diff > 0) {
+          endingPhrase = choose(endingsUp.moderate(amount));
+        } else {
+          endingPhrase = choose(endingsDown.moderate(amount, code));
+        }
+      } else {
+        const lei = Math.floor(roundedBani / 100);
+        const bani = roundedBani % 100;
+        let baniStr = '';
+        if (bani > 0) {
+          baniStr = ` и ${bani} ${declOfNum(bani)}`;
+        }
+        const amount = `${lei} лей${baniStr}`;
+        if (diff > 0) {
+          endingPhrase = choose(endingsUp.significant(amount));
+        } else {
+          endingPhrase = choose(endingsDown.significant(amount, code));
+        }
+      }
+    
+      return `${base} ${endingPhrase}`;
+    }
+    
+    function phraseRO(code, diff) {
+      const absDiff = Math.abs(diff);
+      const roundedBani = Math.round(absDiff * 100);
+    
+      // Если изменений нет
+      if (diff === 0) {
+        const noChangePhrases = {
+          USD: 'Dolarul american a rămas la același nivel',
+          EUR: 'Euro a rămas la același nivel',
+          RUB: 'Rubla rusă a rămas la același nivel',
+          RON: 'Leul românesc a rămas la același nivel',
+          UAH: 'Grivna ucraineană a rămas la același nivel'
+        };
+        return noChangePhrases[code] || `${code} a rămas la același nivel`;
+      }
+    
+      // Функция склонения для "ban"/"bani"
+      function declOfNum(n) {
+        return n === 1 ? 'ban' : 'bani';
+      }
+    
+      const basePhrases = {
+        USD: 'Dolarul american',
+        EUR: 'Euro',
+        RUB: 'Rubla rusă',
+        RON: 'Leul românesc',
+        UAH: 'Grivna ucraineană'
+      };
+    
+      const base = basePhrases[code] || code;
+    
+      const choose = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    
+      const endingsUp = {
+        slight: {
+          default: [
+            'a crescut ușor',
+            'a înregistrat o creștere mică',
+            'a avansat puțin',
+            'a arătat un ușor avans',
+            'a urcat puțin'
+          ]
+        },
+        moderate: (amount) => [
+          `a crescut cu ${amount}`,
+          `a avansat cu ${amount}`,
+          `a înregistrat o creștere de ${amount}`
+        ],
+        significant: (amount) => [
+          `a crescut semnificativ, cu ${amount}`,
+          `a înregistrat o creștere puternică de ${amount}`,
+          `a avansat considerabil — +${amount}`
+        ]
+      };
+    
+      const endingsDown = {
+        slight: {
+          default: [
+            'a scăzut ușor',
+            'a înregistrat o scădere mică',
+            'a pierdut puțin teren',
+            'a arătat un declin ușor',
+            'a coborât puțin'
+          ]
+        },
+        moderate: (amount) => [
+          `a scăzut cu ${amount}`,
+          `a pierdut ${amount}`,
+          `a înregistrat o scădere de ${amount}`
+        ],
+        significant: (amount) => [
+          `a scăzut semnificativ, cu ${amount}`,
+          `a pierdut puternic — ${amount}`,
+          `a înregistrat o scădere considerabilă de ${amount}`
+        ]
+      };
+    
+      let changeText = '';
+    
+      if (roundedBani < 1) {
+        // slight change
+        changeText = diff > 0
+          ? choose(endingsUp.slight.default)
+          : choose(endingsDown.slight.default);
+      } else if (roundedBani < 100) {
+        // moderate change with bani
+        const amount = `${roundedBani} ${declOfNum(roundedBani)}`;
+        changeText = diff > 0
+          ? choose(endingsUp.moderate(amount))
+          : choose(endingsDown.moderate(amount));
+      } else {
+        // significant change with lei and bani
+        const lei = Math.floor(roundedBani / 100);
+        const bani = roundedBani % 100;
+        let baniStr = '';
+        if (bani > 0) {
+          baniStr = ` și ${bani} ${declOfNum(bani)}`;
+        }
+        const amount = `${lei} leu${lei > 1 ? 'i' : ''}${baniStr}`;
+        changeText = diff > 0
+          ? choose(endingsUp.significant(amount))
+          : choose(endingsDown.significant(amount));
+      }
+    
+      return `${base} ${changeText}`;
+    }
+    
+    function parseRates(xml){
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xml,'text/xml');
+      const result = {};
+      codes.forEach(code => {
+        const valute = [...xmlDoc.querySelectorAll('Valute')].find(v => v.querySelector('CharCode')?.textContent === code);
+        if(valute){
+          const nominal = parseFloat(valute.querySelector('Nominal').textContent);
+          const value = parseFloat(valute.querySelector('Value').textContent.replace(',', '.'));
+          result[code] = value / nominal;
+        }
+      });
+      return result;
+    }
+    
+    function createHtmlNews(ratesT, ratesY, phraseFunc, lang, currentDate) {
+      const container = document.createElement('div');
+      const dateISO = formatISODate(currentDate);
+      const dateShow = formatDateObjToString(currentDate);
+    
+      const title = document.createElement('h2');
+      title.textContent = lang === 'ru'
+        ? 'Динамика валютных курсов Национального банка Молдовы на ' + dateISO
+        : 'Dinamica cursurilor valutare ale Băncii Naționale a Moldovei la ' + dateISO;
+      container.appendChild(title);
+    
+      const introP = document.createElement('p');
+      introP.style.marginBottom = '0.5em';
+      introP.textContent = lang === 'ru'
+        ? `Согласно официальным данным Национального банка Молдовы на ${dateShow}:`
+        : `Conform datelor oficiale ale Băncii Naționale a Moldovei la data de ${dateShow}:`;
+      container.appendChild(introP);
+    
+    let anyChanges = false;
+    const ul = document.createElement('ul');
+    
+    codes.forEach(code => {
+      if(ratesT[code] === undefined) return;
+      const curr = ratesT[code];
+      const prev = ratesY[code] ?? curr;
+      const diff = curr - prev;
+    
+      if(diff !== 0){
+        anyChanges = true;
+      }
+    });
+    
+    // Добавляем список только если есть изменения
+    if(anyChanges){
+      codes.forEach(code => {
+        if(ratesT[code] === undefined) return;
+        const curr = ratesT[code];
+        const prev = ratesY[code] ?? curr;
+        const diff = curr - prev;
+        const li = document.createElement('li');
+        li.textContent = phraseFunc(code, diff);
+        ul.appendChild(li);
+      });
+      container.appendChild(ul);
+    }
+    
+    
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+    
+      const changesExist = codes.some(code => {
+        if(ratesT[code] === undefined) return false;
+        const diff = ratesT[code] - (ratesY[code] ?? ratesT[code]);
+        return diff !== 0;
+      });
+    
+      if(lang === 'ru'){
+        thead.innerHTML = changesExist
+          ? `<tr><th>Валюта</th><th>Курс (MDL)</th><th>Изменение</th></tr>`
+          : `<tr><th>Валюта</th><th>Курс (MDL)</th></tr>`;
+      } else {
+        thead.innerHTML = changesExist
+          ? `<tr><th>Valuta</th><th>Curs (MDL)</th><th>Modificare</th></tr>`
+          : `<tr><th>Valuta</th><th>Curs (MDL)</th></tr>`;
+      }
+      table.appendChild(thead);
+    
+      const tbody = document.createElement('tbody');
+    
+      codes.forEach(code => {
+        if(ratesT[code] === undefined) return;
+        const curr = ratesT[code];
+        const prev = ratesY[code] ?? curr;
+        const diff = curr - prev;
+    
+        let diffClass, diffStr;
+        if(diff > 0){
+          diffClass = 'up';
+          diffStr = `+${diff.toFixed(4)}`;
+        } else if(diff < 0){
+          diffClass = 'down';
+          diffStr = diff.toFixed(4);
+        } else {
+          diffClass = 'same';
+          diffStr = '0.0000';
+        }
+    
+        const tr = document.createElement('tr');
+    
+        const flagUrl = flags[code] || '';
+    const flagImg = flagUrl
+      ? `<img src="${flagUrl}" alt="${code}" style="width:24px; height:16px; vertical-align:middle; margin-right:6px;">`
+      : '';
+    
+        if(changesExist){
+          tr.innerHTML = `
+            <td>${flagImg}${code}</td>
+            <td>${curr.toFixed(4)}</td>
+            <td class="diff ${diffClass}">${diffStr}</td>
+          `;
+        } else {
+          tr.innerHTML = `
+            <td>${flagImg}${code}</td>
+            <td>${curr.toFixed(4)}</td>
+          `;
+        }
+    
+        tbody.appendChild(tr);
+      });
+    
+      table.appendChild(tbody);
+      container.appendChild(table);
+    
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = lang === 'ru' ? '📋 Копировать' : '📋 Copiază';
+      copyBtn.onclick = () => {
+        const markdownText = buildMarkdown(dateISO, ratesT, ratesY, phraseFunc,
+          lang === 'ru'
+            ? `Согласно официальным данным Национального банка Молдовы на ${dateISO}:`
+            : `Conform datelor oficiale ale Băncii Naționale a Moldovei la data de ${dateISO}:`,
+          lang === 'ro'
+        );
+        navigator.clipboard.writeText(markdownText)
+          .catch(err => console.error('Ошибка копирования:', err));
+      };
+      container.appendChild(copyBtn);
+    
+      return container;
+    }
+    
+    function buildMarkdown(dateISO, ratesT, ratesY, phraseFunc, langIntro, isRO) {
+      const lines = [];
+      let anyChange = false;
+    
+      codes.forEach(code => {
+        if (ratesT[code] === undefined) return;
+    
+        const prevRate = ratesY[code] ?? ratesT[code];
+        const diff = ratesT[code] - prevRate;
+    
+        if (diff !== 0) {
+          lines.push(phraseFunc(code, diff));
+          anyChange = true;
+        }
+      });
+    
+    let md = `# ${isRO 
+      ? 'Dinamica cursurilor valutare ale Băncii Naționale a Moldovei la' 
+      : 'Динамика валютных курсов Национального банка Молдовы на'} ${dateISO}\n\n${langIntro}\n`;
+    
+    
+    md+='\n';
+    
+      if (anyChange) {
+        md += lines.map(line => `• ${line}`).join('\n') + '\n\n';
+      }
+    
+      if (anyChange) {
+        md += isRO
+          ? `| Valuta | Curs (MDL) | Modificare |\n|--------|------------|------------|\n`
+          : `| Валюта | Курс (MDL) | Изменение |\n|--------|------------|-----------|\n`;
+    
+        codes.forEach(code => {
+          if (ratesT[code] === undefined) return;
+          const curr = ratesT[code];
+          const prev = ratesY[code] ?? curr;
+          const diff = curr - prev;
+    
+          let diffVal = '0.0000';
+    
+          if (diff > 0) {
+            diffVal = `+${diff.toFixed(4)}`;
+          } else if (diff < 0) {
+            diffVal = diff.toFixed(4);
+          }
+    
+          md += `| ${code} | ${curr.toFixed(4)} | ${diffVal} |\n`;
+        });
+      } else {
+        // Нет изменений — таблица без колонки "Изменение"
+        md += isRO
+          ? `| Valuta | Curs (MDL) |\n|--------|------------|\n`
+          : `| Валюта | Курс (MDL) |\n|--------|------------|\n`;
+    
+        codes.forEach(code => {
+          if (ratesT[code] === undefined) return;
+          md += `| ${code} | ${ratesT[code].toFixed(4)} |\n`;
+        });
+      }
+    
+      return md;
+    }
+    
+    
+    async function fetchRates() {
+      const dateInput = prompt('Введите дату (ГГГГ-ММ-ДД):', new Date().toISOString().slice(0,10));
+      if (!dateInput) return;
+    
+      const [y, m, d] = dateInput.split('-');
+      const currentDate = new Date(+y, +m - 1, +d);
+    
+      // Предыдущий день
+      const prevDate = new Date(currentDate);
+      prevDate.setDate(currentDate.getDate() - 1);
+    
+      const dateStr1 = formatDateObjToString(currentDate);  // например, "23.06.2025"
+      const dateStr2 = formatDateObjToString(prevDate);
+    
+      const dateISO1 = formatISODate(currentDate);          // например, "2025-06-23"
+      const dateShow1 = formatDateObjToString(currentDate); // то же, что dateStr1
+    
+      // URL для загрузки курсов (через allorigins чтобы избежать CORS)
+      const url1 = `https://api.allorigins.win/raw?url=${encodeURIComponent('https://www.bnm.md/en/official_exchange_rates?get_xml=1&date=' + dateStr1)}`;
+      const url2 = `https://api.allorigins.win/raw?url=${encodeURIComponent('https://www.bnm.md/en/official_exchange_rates?get_xml=1&date=' + dateStr2)}`;
+    
+      const containerRU = document.getElementById('content-ru');
+      const containerRO = document.getElementById('content-ro');
+    
+      containerRU.innerHTML = 'Загрузка данных...';
+      containerRO.innerHTML = '';
+    
+      try {
+        const [xml1, xml2] = await Promise.all([
+          fetchWithRetries(url1),
+          fetchWithRetries(url2)
+        ]);
+    
+        const ratesToday = parseRates(xml1);
+        const ratesYesterday = parseRates(xml2);
+    
+        containerRU.innerHTML = '';
+        containerRO.innerHTML = '';
+    
+        // Передаём дату в createHtmlNews
+    containerRU.appendChild(createHtmlNews(ratesToday, ratesYesterday, phraseRU, 'ru', currentDate));
+    containerRO.appendChild(createHtmlNews(ratesToday, ratesYesterday, phraseRO, 'ro', currentDate));
+    
+    
+      } catch (e) {
+        containerRU.innerHTML = `<p style="color:red;">Ошибка при загрузке данных, попробуйте позже.</p>`;
+        containerRO.innerHTML = '';
+        console.error(e);
+      }
+    }
+
+</script>
+</body>
+</html>
